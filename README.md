@@ -10,14 +10,27 @@ API for uploading and processing invoices and receipts in image or document form
 - ✅ Unique names to avoid conflicts
 - ✅ Automatic documentation with Swagger
 - ✅ OCR text extraction from images
+- ✅ AI-powered field extraction using Mistral 7B (free)
 
 ## Installation
+
+### OpenRouter Setup
+
+This API uses **Mistral 7B Instruct** via OpenRouter for AI-powered field extraction. You need a free API key:
+
+1. **Get Free API Key**: Visit [https://openrouter.ai/](https://openrouter.ai/) and sign up
+2. **Copy API Key**: From your dashboard, copy your API key
+3. **Configure**: Add it to your `.env` file
 
 ### Local Development
 
 ```bash
 # Install dependencies
 pip3 install -r requirements.txt
+
+# Set up OpenRouter API key (required - get free key from https://openrouter.ai/)
+cp env.example .env
+# Edit .env and add your OpenRouter API key
 ```
 
 ### Docker Deployment
@@ -95,6 +108,17 @@ curl -X POST "http://localhost:8000/upload-invoice" \
     "confidence": 85.5,
     "word_count": 8,
     "char_count": 45
+  },
+  "parsed_fields": {
+    "contacto": "ABC Corp",
+    "numero_documento": "INV-001",
+    "fecha_emision": "15/01/2024",
+    "divisa": "USD",
+    "precio": 150.50,
+    "descuento": null,
+    "impuesto": 15.05,
+    "total": 165.55,
+    "confidence": "high"
   }
 }
 ```
@@ -120,6 +144,17 @@ curl -X POST "http://localhost:8000/upload-invoice" \
     "word_count": 8,
     "char_count": 45,
     "pages": 1
+  },
+  "parsed_fields": {
+    "contacto": "ABC Corp",
+    "numero_documento": "INV-001",
+    "fecha_emision": "15/01/2024",
+    "divisa": "USD",
+    "precio": 150.50,
+    "descuento": null,
+    "impuesto": 15.05,
+    "total": 165.55,
+    "confidence": "high"
   }
 }
 ```
@@ -145,6 +180,17 @@ curl -X POST "http://localhost:8000/upload-invoice" \
     "word_count": 8,
     "char_count": 45,
     "pages": 1
+  },
+  "parsed_fields": {
+    "contacto": "ABC Corp",
+    "numero_documento": "INV-001",
+    "fecha_emision": "15/01/2024",
+    "divisa": "USD",
+    "precio": 150.50,
+    "descuento": null,
+    "impuesto": 15.05,
+    "total": 165.55,
+    "confidence": "high"
   }
 }
 ```
@@ -169,6 +215,7 @@ The API is built with:
 - **Pillow** - Image processing
 - **Pydantic** - Data validation
 - **Tesseract OCR** - Text extraction from images
+- **Mistral 7B Instruct** - AI-powered field extraction (via OpenRouter)
 
 ## Deployment
 

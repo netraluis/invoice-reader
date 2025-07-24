@@ -12,7 +12,14 @@ import numpy as np
 import PyPDF2
 from pdf2image import convert_from_path
 import tempfile
-import os
+import re
+from typing import Dict, Any
+import json
+import requests
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = FastAPI(
     title="Invoice Reader API",
@@ -149,6 +156,168 @@ def extract_text_from_pdf(pdf_path: str) -> dict:
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+def parse_invoice_fields_ai(text: str) -> Dict[str, Any]:
+    """
+    Parse invoice text using Mistral 7B Instruct via OpenRouter
+    """
+    result = {
+        "contacto": None,
+        "numero_documento": None,
+        "fecha_emision": None,
+        "divisa": None,
+        "precio": None,
+        "descuento": None,
+        "impuesto": None,
+        "total": None,
+        "confidence": "high" if text else "low"
+    }
+    
+    if not text:
+        return result
+    
+    try:
+        # Use OpenRouter API directly with requests
+        api_key = os.getenv('OPENROUTER_API_KEY')
+        print(f"API Key found: {api_key[:10]}..." if api_key else "No API key found")
+        
+        if not api_key:
+            raise Exception("OPENROUTER_API_KEY environment variable is required. Get a free API key from https://openrouter.ai/")
+        
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://invoice-reader-api.com",
+            "X-Title": "Invoice Reader API"
+        }
+        
+        data = {
+            "model": "mistralai/mistral-7b-instruct:free",
+            "messages": [
+                {"role": "system", "content": "Eres un experto en extraer información de facturas y tickets. Responde siempre en formato JSON válido."},
+                {"role": "user", "content": f"Extrae la siguiente información de este texto de factura/ticket. Responde SOLO en formato JSON válido con los siguientes campos: contacto, numero_documento, fecha_emision, divisa, precio, descuento, impuesto, total. Si algún campo no se encuentra, usa null. Para valores numéricos, usa solo números. Texto: {text}"}
+            ],
+            "temperature": 0.1,
+            "max_tokens": 500
+        }
+        
+        response = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers=headers,
+            json=data
+        )
+        
+        if response.status_code == 200:
+            ai_response = response.json()["choices"][0]["message"]["content"].strip()
+            
+            # Try to extract JSON from the response
+            try:
+                # Remove any markdown formatting if present
+                if ai_response.startswith("```json"):
+                    ai_response = ai_response[7:]
+                if ai_response.endswith("```"):
+                    ai_response = ai_response[:-3]
+                
+                parsed_data = json.loads(ai_response)
+                
+                # Update result with AI extracted data
+                for key in result.keys():
+                    if key in parsed_data and parsed_data[key] is not None:
+                        result[key] = parsed_data[key]
+                
+                result["confidence"] = "high"
+                
+            except json.JSONDecodeError as e:
+                # Fallback to regex if AI parsing fails
+                result = parse_invoice_fields_fallback(text)
+                result["confidence"] = "medium"
+        else:
+            raise Exception(f"OpenRouter API Error: {response.status_code} - {response.text}")
+            
+    except Exception as e:
+        # Fallback to regex if AI fails
+        result = parse_invoice_fields_fallback(text)
+        result["confidence"] = "low"
+        result["ai_error"] = f"OpenRouter Error: {str(e)}"
+        print(f"OpenRouter API Error: {e}")
+        print(f"Error type: {type(e)}")
+    
+    return result
+
+def parse_invoice_fields_fallback(text: str) -> Dict[str, Any]:
+    """
+    Fallback regex-based parsing when AI fails
+    """
+    result = {
+        "contacto": None,
+        "numero_documento": None,
+        "fecha_emision": None,
+        "divisa": None,
+        "precio": None,
+        "descuento": None,
+        "impuesto": None,
+        "total": None,
+        "confidence": "low"
+    }
+    
+    if not text:
+        return result
+    
+    text_lower = text.lower()
+    
+    # Extract document number
+    doc_patterns = [
+        r'invoice\s*#?\s*:?\s*([a-zA-Z0-9\-_]+)',
+        r'ticket\s*#?\s*:?\s*([a-zA-Z0-9\-_]+)',
+        r'factura\s*#?\s*:?\s*([a-zA-Z0-9\-_]+)',
+        r'#\s*([a-zA-Z0-9\-_]+)'
+    ]
+    
+    for pattern in doc_patterns:
+        match = re.search(pattern, text_lower)
+        if match:
+            result["numero_documento"] = match.group(1).upper()
+            break
+    
+    # Extract total
+    total_patterns = [
+        r'total\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)',
+        r'amount\s*:?\s*\$?\s*([0-9,]+\.?[0-9]*)',
+        r'\$\s*([0-9,]+\.?[0-9]*)'
+    ]
+    
+    for pattern in total_patterns:
+        match = re.search(pattern, text_lower)
+        if match:
+            amount_str = match.group(1).replace(',', '')
+            try:
+                result["total"] = float(amount_str)
+                break
+            except ValueError:
+                continue
+    
+    # Extract currency
+    if re.search(r'\$', text):
+        result["divisa"] = "USD"
+    elif re.search(r'eur', text_lower):
+        result["divisa"] = "EUR"
+    elif re.search(r'mxn', text_lower):
+        result["divisa"] = "MXN"
+    
+    # Extract date
+    date_patterns = [
+        r'date\s*:?\s*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
+        r'(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})',
+        r'(\d{4}-\d{2}-\d{2})'
+    ]
+    
+    for pattern in date_patterns:
+        match = re.search(pattern, text)
+        if match:
+            result["fecha_emision"] = match.group(1)
+            break
+    
+    return result
+
 def validate_file(file: UploadFile) -> bool:
     """Validates the uploaded file"""
     # Check file extension
@@ -176,6 +345,16 @@ async def upload_invoice(
     Text extraction:
     - Images: OCR processing
     - PDFs: Direct text extraction first, then OCR if needed
+    
+    AI-powered field extraction:
+    - contacto: Company or person issuing the invoice
+    - numero_documento: Invoice/ticket number
+    - fecha_emision: Issue date
+    - divisa: Currency (USD, EUR, MXN, etc.)
+    - precio: Base price or subtotal
+    - descuento: Discount amount if applicable
+    - impuesto: Tax or VAT amount
+    - total: Total amount to pay
     """
     
     if not file:
@@ -202,6 +381,11 @@ async def upload_invoice(
         elif file_extension.lower() == '.pdf':
             ocr_result = extract_text_from_pdf(str(file_path))
         
+        # Parse extracted text to extract key fields
+        parsed_fields = None
+        if ocr_result and ocr_result.get("success") and ocr_result.get("text"):
+            parsed_fields = parse_invoice_fields_ai(ocr_result["text"])
+        
         # Create response
         response_data = {
             "success": True,
@@ -214,7 +398,8 @@ async def upload_invoice(
                 "uploaded_at": datetime.now().isoformat()
             },
             "user_id": user_id,
-            "ocr_result": ocr_result
+            "ocr_result": ocr_result,
+            "parsed_fields": parsed_fields
         }
         
         return JSONResponse(content=response_data, status_code=200)
@@ -238,6 +423,17 @@ async def root():
             "health": "/health",
             "docs": "/docs"
         }
+    }
+
+@app.get("/debug/env")
+async def debug_env():
+    """Debug endpoint to check environment variables"""
+    api_key = os.getenv('OPENROUTER_API_KEY')
+    return {
+        "api_key_exists": bool(api_key),
+        "api_key_preview": api_key[:10] + "..." if api_key else None,
+        "env_file_exists": os.path.exists(".env"),
+        "current_working_dir": os.getcwd()
     }
 
 if __name__ == "__main__":
