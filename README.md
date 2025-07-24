@@ -1,65 +1,82 @@
 # Invoice Reader API
 
-API para subir y procesar facturas y tickets en formato de imagen o documento.
+API for uploading and processing invoices and receipts in image or document format.
 
-## Características
+## Features
 
-- ✅ Subida de archivos individuales (imágenes y PDFs)
-- ✅ Validación de tipos de archivo y tamaño
-- ✅ Asociación con user_id
-- ✅ Nombres únicos para evitar conflictos
-- ✅ Documentación automática con Swagger
+- ✅ Individual file upload (images and PDFs)
+- ✅ File type and size validation
+- ✅ User ID association
+- ✅ Unique names to avoid conflicts
+- ✅ Automatic documentation with Swagger
+- ✅ OCR text extraction from images
 
-## Instalación
+## Installation
+
+### Local Development
 
 ```bash
-# Instalar dependencias
+# Install dependencies
 pip3 install -r requirements.txt
 ```
 
-## Uso
-
-### Ejecutar el servidor
+### Docker Deployment
 
 ```bash
-# Opción 1: Directo
+# Build the Docker image
+docker build -t invoice-reader .
+
+# Run the container
+docker run -p 8000:8000 invoice-reader
+```
+
+## Usage
+
+### Run the server
+
+```bash
+# Option 1: Direct
 python main.py
 
-# Opción 2: Con uvicorn
+# Option 2: With uvicorn
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
+
+# Option 3: Docker
+docker run -p 8000:8000 invoice-reader
 ```
 
 ### Endpoints
 
-- **POST** `/upload-invoice` - Subir facturas/tickets
-- **GET** `/health` - Verificar estado de la API
-- **GET** `/` - Información de la API
-- **GET** `/docs` - Documentación interactiva (Swagger)
+- **POST** `/upload-invoice` - Upload invoices/receipts
+- **GET** `/health` - Check API status
+- **GET** `/` - API information
+- **GET** `/docs` - Interactive documentation (Swagger)
 
-### Ejemplo de uso con curl
+### Example usage with curl
 
 ```bash
-# Subir una imagen con user_id
+# Upload an image with user_id
 curl -X POST "http://localhost:8000/upload-invoice" \
   -H "Content-Type: multipart/form-data" \
   -F "file=@factura.jpg" \
   -F "user_id=user123"
 
-# Subir un PDF con user_id
+# Upload a PDF with user_id
 curl -X POST "http://localhost:8000/upload-invoice" \
   -H "Content-Type: multipart/form-data" \
   -F "file=@ticket.pdf" \
   -F "user_id=user456"
 ```
 
-### Tipos de archivo soportados
+### Supported file types
 
-- **Imágenes**: JPG, JPEG, PNG, TIFF, BMP
-- **Documentos**: PDF
-- **Tamaño máximo**: 10MB por archivo
+- **Images**: JPG, JPEG, PNG, TIFF, BMP
+- **Documents**: PDF
+- **Maximum size**: 10MB per file
 
-### Respuesta de ejemplo
+### Example responses
 
+#### Image response:
 ```json
 {
   "success": true,
@@ -71,25 +88,108 @@ curl -X POST "http://localhost:8000/upload-invoice" \
     "content_type": "image/jpeg",
     "uploaded_at": "2024-01-15T10:30:00.123456"
   },
-  "user_id": "user123"
+  "user_id": "user123",
+  "ocr_result": {
+    "success": true,
+    "text": "INVOICE\nCompany: ABC Corp\nAmount: $150.50\nDate: 2024-01-15",
+    "confidence": 85.5,
+    "word_count": 8,
+    "char_count": 45
+  }
 }
 ```
 
-## Estructura del proyecto
+#### PDF response (direct extraction):
+```json
+{
+  "success": true,
+  "file_info": {
+    "original_name": "invoice.pdf",
+    "saved_name": "b2c3d4e5-f6g7-8901-bcde-f23456789012.pdf",
+    "file_path": "uploads/b2c3d4e5-f6g7-8901-bcde-f23456789012.pdf",
+    "file_size": 512000,
+    "content_type": "application/pdf",
+    "uploaded_at": "2024-01-15T10:30:00.123456"
+  },
+  "user_id": "user123",
+  "ocr_result": {
+    "success": true,
+    "text": "INVOICE\nCompany: ABC Corp\nAmount: $150.50\nDate: 2024-01-15",
+    "method": "direct_extraction",
+    "confidence": 100.0,
+    "word_count": 8,
+    "char_count": 45,
+    "pages": 1
+  }
+}
+```
+
+#### PDF response (OCR conversion):
+```json
+{
+  "success": true,
+  "file_info": {
+    "original_name": "scanned_invoice.pdf",
+    "saved_name": "c3d4e5f6-g7h8-9012-cdef-g34567890123.pdf",
+    "file_path": "uploads/c3d4e5f6-g7h8-9012-cdef-g34567890123.pdf",
+    "file_size": 1024000,
+    "content_type": "application/pdf",
+    "uploaded_at": "2024-01-15T10:30:00.123456"
+  },
+  "user_id": "user123",
+  "ocr_result": {
+    "success": true,
+    "text": "--- Page 1 ---\nINVOICE\nCompany: ABC Corp\nAmount: $150.50\nDate: 2024-01-15",
+    "method": "ocr_conversion",
+    "confidence": 82.3,
+    "word_count": 8,
+    "char_count": 45,
+    "pages": 1
+  }
+}
+```
+
+## Project structure
 
 ```
 invoice-reader/
-├── main.py              # Aplicación FastAPI
-├── requirements.txt     # Dependencias
-├── uploads/            # Directorio de archivos subidos
-├── .gitignore          # Archivos ignorados por git
-└── README.md           # Este archivo
+├── main.py              # FastAPI application
+├── requirements.txt     # Dependencies
+├── Dockerfile          # Docker configuration
+├── uploads/            # Uploaded files directory
+├── .gitignore          # Git ignored files
+└── README.md           # This file
 ```
 
-## Desarrollo
+## Development
 
-La API está construida con:
-- **FastAPI** - Framework web moderno y rápido
-- **Uvicorn** - Servidor ASGI
-- **Pillow** - Procesamiento de imágenes
-- **Pydantic** - Validación de datos
+The API is built with:
+- **FastAPI** - Modern and fast web framework
+- **Uvicorn** - ASGI server
+- **Pillow** - Image processing
+- **Pydantic** - Data validation
+- **Tesseract OCR** - Text extraction from images
+
+## Deployment
+
+### Docker (Recommended)
+
+The included Dockerfile automatically installs Tesseract OCR and all dependencies:
+
+```bash
+# Build and run
+docker build -t invoice-reader .
+docker run -p 8000:8000 invoice-reader
+
+# With volume for persistent uploads
+docker run -p 8000:8000 -v $(pwd)/uploads:/app/uploads invoice-reader
+```
+
+### Cloud Deployment
+
+The Docker image can be deployed to:
+- **AWS ECS/Fargate**
+- **Google Cloud Run**
+- **Azure Container Instances**
+- **Heroku** (with Docker support)
+- **DigitalOcean App Platform**
