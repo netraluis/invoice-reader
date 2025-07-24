@@ -4,9 +4,9 @@ API para subir y procesar facturas y tickets en formato de imagen o documento.
 
 ## Características
 
-- ✅ Subida de múltiples archivos (imágenes y PDFs)
+- ✅ Subida de archivos individuales (imágenes y PDFs)
 - ✅ Validación de tipos de archivo y tamaño
-- ✅ Metadatos opcionales (descripción, monto, fecha)
+- ✅ Asociación con user_id
 - ✅ Nombres únicos para evitar conflictos
 - ✅ Documentación automática con Swagger
 
@@ -39,22 +39,17 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ### Ejemplo de uso con curl
 
 ```bash
-# Subir una imagen
+# Subir una imagen con user_id
 curl -X POST "http://localhost:8000/upload-invoice" \
-  -H "accept: application/json" \
   -H "Content-Type: multipart/form-data" \
-  -F "files=@factura.jpg" \
-  -F "description=Factura de electricidad" \
-  -F "amount=150.50" \
-  -F "date=2024-01-15"
+  -F "file=@factura.jpg" \
+  -F "user_id=user123"
 
-# Subir múltiples archivos
+# Subir un PDF con user_id
 curl -X POST "http://localhost:8000/upload-invoice" \
-  -H "accept: application/json" \
   -H "Content-Type: multipart/form-data" \
-  -F "files=@factura1.jpg" \
-  -F "files=@factura2.pdf" \
-  -F "description=Facturas del mes"
+  -F "file=@ticket.pdf" \
+  -F "user_id=user456"
 ```
 
 ### Tipos de archivo soportados
@@ -68,25 +63,15 @@ curl -X POST "http://localhost:8000/upload-invoice" \
 ```json
 {
   "success": true,
-  "uploaded_files": [
-    {
-      "original_name": "factura.jpg",
-      "saved_name": "a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg",
-      "file_path": "uploads/a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg",
-      "file_size": 245760,
-      "content_type": "image/jpeg",
-      "uploaded_at": "2024-01-15T10:30:00.123456"
-    }
-  ],
-  "total_files": 1,
-  "successful_uploads": 1,
-  "errors": [],
-  "metadata": {
-    "description": "Factura de electricidad",
-    "amount": 150.5,
-    "date": "2024-01-15",
-    "upload_timestamp": "2024-01-15T10:30:00.123456"
-  }
+  "file_info": {
+    "original_name": "factura.jpg",
+    "saved_name": "a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg",
+    "file_path": "uploads/a1b2c3d4-e5f6-7890-abcd-ef1234567890.jpg",
+    "file_size": 245760,
+    "content_type": "image/jpeg",
+    "uploaded_at": "2024-01-15T10:30:00.123456"
+  },
+  "user_id": "user123"
 }
 ```
 

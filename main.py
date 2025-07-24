@@ -1,6 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse
-from typing import List, Optional
 import os
 import uuid
 from datetime import datetime
@@ -9,7 +8,7 @@ from pathlib import Path
 
 app = FastAPI(
     title="Invoice Reader API",
-    description="API para subir y procesar facturas y tickets",
+    description="API for uploading and processing invoices and receipts",
     version="1.0.0"
 )
 
@@ -22,13 +21,13 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 UPLOAD_DIR.mkdir(exist_ok=True)
 
 def validate_file(file: UploadFile) -> bool:
-    """Valida el archivo subido"""
-    # Verificar extensión
+    """Validates the uploaded file"""
+    # Check file extension
     file_extension = Path(file.filename).suffix.lower()
     if file_extension not in ALLOWED_EXTENSIONS:
         return False
     
-    # Verificar tamaño
+    # Check file size
     if file.size and file.size > MAX_FILE_SIZE:
         return False
     
@@ -36,82 +35,60 @@ def validate_file(file: UploadFile) -> bool:
 
 @app.post("/upload-invoice")
 async def upload_invoice(
-    files: List[UploadFile] = File(..., description="Archivos de factura/ticket a subir"),
-    description: Optional[str] = Form(None, description="Descripción opcional de la factura"),
-    amount: Optional[float] = Form(None, description="Monto de la factura"),
-    date: Optional[str] = Form(None, description="Fecha de la factura (YYYY-MM-DD)")
+    file: UploadFile = File(..., description="Invoice/receipt file to upload"),
+    user_id: str = Form(..., description="User ID")
 ):
     """
-    Sube una o más imágenes/documentos de factura o ticket
+    Upload an invoice/receipt image or document
     
-    - **files**: Lista de archivos (imágenes o PDFs)
-    - **description**: Descripción opcional
-    - **amount**: Monto opcional de la factura
-    - **date**: Fecha opcional de la factura
+    - **file**: File (image or PDF)
+    - **user_id**: ID of the user uploading the file
     """
     
-    if not files:
-        raise HTTPException(status_code=400, detail="Debe subir al menos un archivo")
+    if not file:
+        raise HTTPException(status_code=400, detail="You must upload a file")
     
-    uploaded_files = []
-    errors = []
-    
-    for file in files:
-        try:
-            # Validar archivo
-            if not validate_file(file):
-                errors.append(f"Archivo '{file.filename}' no válido o demasiado grande")
-                continue
-            
-            # Generar nombre único
-            file_extension = Path(file.filename).suffix.lower()
-            unique_filename = f"{uuid.uuid4()}{file_extension}"
-            file_path = UPLOAD_DIR / unique_filename
-            
-            # Guardar archivo
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-            
-            uploaded_files.append({
+    try:
+        # Validate file
+        if not validate_file(file):
+            raise HTTPException(status_code=400, detail="Invalid file or file too large")
+        
+        # Generate unique name
+        file_extension = Path(file.filename).suffix.lower()
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+        file_path = UPLOAD_DIR / unique_filename
+        
+        # Save file
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Create response
+        response_data = {
+            "success": True,
+            "file_info": {
                 "original_name": file.filename,
                 "saved_name": unique_filename,
                 "file_path": str(file_path),
                 "file_size": file.size,
                 "content_type": file.content_type,
                 "uploaded_at": datetime.now().isoformat()
-            })
-            
-        except Exception as e:
-            errors.append(f"Error al procesar '{file.filename}': {str(e)}")
-    
-    # Crear respuesta
-    response_data = {
-        "success": len(uploaded_files) > 0,
-        "uploaded_files": uploaded_files,
-        "total_files": len(files),
-        "successful_uploads": len(uploaded_files),
-        "errors": errors,
-        "metadata": {
-            "description": description,
-            "amount": amount,
-            "date": date,
-            "upload_timestamp": datetime.now().isoformat()
+            },
+            "user_id": user_id
         }
-    }
-    
-    if not uploaded_files:
-        raise HTTPException(status_code=400, detail="No se pudo procesar ningún archivo")
-    
-    return JSONResponse(content=response_data, status_code=200)
+        
+        return JSONResponse(content=response_data, status_code=200)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error processing file: {str(e)}")
 
 @app.get("/health")
 async def health_check():
-    """Endpoint de salud de la API"""
+    """API health check endpoint"""
     return {"status": "healthy", "timestamp": datetime.now().isoformat()}
 
 @app.get("/")
 async def root():
-    """Endpoint raíz con información de la API"""
+    """Root endpoint with API information"""
     return {
         "message": "Invoice Reader API",
         "version": "1.0.0",
