@@ -190,11 +190,31 @@ def parse_invoice_fields_ai(text: str) -> Dict[str, Any]:
             "X-Title": "Invoice Reader API"
         }
         
+        # Create multi-line prompt
+        system_prompt = """
+        Eres un experto en extraer información de facturas y tickets. 
+        Responde siempre en formato JSON válido con los siguientes campos:
+
+        - contacto: nombre de la empresa o persona que emite la factura
+        - numero_documento: número de factura, ticket o documento  
+        - fecha_emision: fecha de emisión (formato DD/MM/YYYY o YYYY-MM-DD)
+        - divisa: moneda (USD, EUR, MXN, etc.)
+        - precio: precio base o subtotal
+        - descuento: monto de descuento si aplica
+        - impuesto: monto de impuestos o IVA
+        - total: monto total a pagar
+
+        Si algún campo no se encuentra, usa null.
+        Para valores numéricos, usa solo números (sin símbolos de moneda).
+        """
+
+        user_prompt = f"""Extrae la información de esta factura/ticket: {text}"""
+
         data = {
             "model": "mistralai/mistral-7b-instruct:free",
             "messages": [
-                {"role": "system", "content": "Eres un experto en extraer información de facturas y tickets. Responde siempre en formato JSON válido."},
-                {"role": "user", "content": f"Extrae la siguiente información de este texto de factura/ticket. Responde SOLO en formato JSON válido con los siguientes campos: contacto, numero_documento, fecha_emision, divisa, precio, descuento, impuesto, total. Si algún campo no se encuentra, usa null. Para valores numéricos, usa solo números. Texto: {text}"}
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
             ],
             "temperature": 0.1,
             "max_tokens": 500
