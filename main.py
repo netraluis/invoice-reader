@@ -162,6 +162,8 @@ def parse_invoice_fields_ai(text: str) -> Dict[str, Any]:
     """
     result = {
         "contacto": None,
+        "numero_registro_tributario": None,
+        "direccion_cliente": None,
         "numero_documento": None,
         "fecha_emision": None,
         "divisa": None,
@@ -169,7 +171,8 @@ def parse_invoice_fields_ai(text: str) -> Dict[str, Any]:
         "descuento": None,
         "impuesto": None,
         "total": None,
-        "confidence": "high" if text else "low"
+        "confidence": "high" if text else "low",
+        "validation_notes": None
     }
     
     if not text:
@@ -196,6 +199,8 @@ def parse_invoice_fields_ai(text: str) -> Dict[str, Any]:
         Responde siempre en formato JSON válido con los siguientes campos:
 
         - contacto: nombre de la empresa o persona que emite la factura
+        - numero_registro_tributario: id unico de la empresa
+        - direccion_cliente: dirección completa del cliente (calle, ciudad, país)
         - numero_documento: número de factura, ticket o documento  
         - fecha_emision: fecha de emisión (formato DD/MM/YYYY o YYYY-MM-DD)
         - divisa: moneda (USD, EUR, MXN, etc.)
@@ -204,8 +209,19 @@ def parse_invoice_fields_ai(text: str) -> Dict[str, Any]:
         - impuesto: monto de impuestos o IVA
         - total: monto total a pagar
 
-        Si algún campo no se encuentra, usa null.
-        Para valores numéricos, usa solo números (sin símbolos de moneda).
+        REGLAS DE VALIDACIÓN:
+        1. Si algún campo no se encuentra, usa null
+        2. Para valores numéricos, usa solo números (sin símbolos de moneda)
+        3. Las fechas deben estar en formato DD/MM/YYYY o YYYY-MM-DD
+        4. El total debe ser la suma de precio + impuesto - descuento (verifica la coherencia)
+        5. Si encuentras inconsistencias, ajusta los valores para que sean coherentes
+        6. La divisa debe ser un código estándar (USD, EUR, MXN, etc.)
+        7. El contacto debe ser el nombre de la empresa o persona que emite el documento
+
+        VALIDACIÓN FINAL:
+        - Verifica que los números sean coherentes
+        - Asegúrate de que las fechas tengan formato válido
+        - Confirma que el total sea lógico respecto a precio, descuento e impuesto
         """
 
         user_prompt = f"""Extrae la información de esta factura/ticket: {text}"""
@@ -244,7 +260,10 @@ def parse_invoice_fields_ai(text: str) -> Dict[str, Any]:
                     if key in parsed_data and parsed_data[key] is not None:
                         result[key] = parsed_data[key]
                 
-                result["confidence"] = "high"
+                # Validate extracted data
+                validation_notes = validate_extracted_data(result)
+                result["validation_notes"] = validation_notes
+                result["confidence"] = "high" if not validation_notes else "medium"
                 
             except json.JSONDecodeError as e:
                 # Fallback to regex if AI parsing fails
@@ -263,12 +282,63 @@ def parse_invoice_fields_ai(text: str) -> Dict[str, Any]:
     
     return result
 
+def validate_extracted_data(data: Dict[str, Any]) -> str:
+    """
+    Validate extracted invoice data for consistency
+    """
+    notes = []
+    
+    # Check if total is coherent with other values
+    if data.get("precio") and data.get("impuesto") and data.get("descuento") and data.get("total"):
+        try:
+            precio = float(data["precio"])
+            impuesto = float(data["impuesto"])
+            descuento = float(data["descuento"])
+            total = float(data["total"])
+            
+            expected_total = precio + impuesto - descuento
+            if abs(total - expected_total) > 0.01:  # Allow small rounding differences
+                notes.append(f"Total ({total}) doesn't match expected calculation ({expected_total})")
+        except (ValueError, TypeError):
+            notes.append("Could not validate total calculation due to non-numeric values")
+    
+    # Check date format
+    if data.get("fecha_emision"):
+        date_str = str(data["fecha_emision"])
+        if not re.match(r'^\d{2}/\d{2}/\d{4}$|^\d{4}-\d{2}-\d{2}$', date_str):
+            notes.append(f"Date format may be invalid: {date_str}")
+    
+    # Check currency format
+    if data.get("divisa"):
+        divisa = str(data["divisa"]).upper()
+        if not re.match(r'^[A-Z]{3}$', divisa):
+            notes.append(f"Currency format may be invalid: {divisa}")
+    
+    # Check if numeric values are actually numbers
+    numeric_fields = ["precio", "descuento", "impuesto", "total"]
+    for field in numeric_fields:
+        if data.get(field):
+            try:
+                float(data[field])
+            except (ValueError, TypeError):
+                notes.append(f"{field} is not a valid number: {data[field]}")
+    
+    # Check address format
+    if data.get("direccion_cliente"):
+        address = str(data["direccion_cliente"])
+        if len(address.strip()) < 10:  # Address should be reasonably long
+            notes.append(f"Address seems too short: {address}")
+    
+    return "; ".join(notes) if notes else None
+
 def parse_invoice_fields_fallback(text: str) -> Dict[str, Any]:
     """
     Fallback regex-based parsing when AI fails
     """
     result = {
         "contacto": None,
+        "numero_registro_tributario": None,
+        "direccion_cliente": None,
         "numero_documento": None,
         "fecha_emision": None,
         "divisa": None,
@@ -276,7 +346,8 @@ def parse_invoice_fields_fallback(text: str) -> Dict[str, Any]:
         "descuento": None,
         "impuesto": None,
         "total": None,
-        "confidence": "low"
+        "confidence": "low",
+        "validation_notes": None
     }
     
     if not text:
