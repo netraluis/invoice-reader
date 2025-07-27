@@ -89,7 +89,7 @@ curl -X POST "http://localhost:8000/upload-invoice" \
 
 ### Example responses
 
-#### Image response:
+#### Image response or PDF response:
 ```json
 {
   "success": true,
@@ -123,78 +123,6 @@ curl -X POST "http://localhost:8000/upload-invoice" \
 }
 ```
 
-#### PDF response (direct extraction):
-```json
-{
-  "success": true,
-  "file_info": {
-    "original_name": "invoice.pdf",
-    "saved_name": "b2c3d4e5-f6g7-8901-bcde-f23456789012.pdf",
-    "file_path": "uploads/b2c3d4e5-f6g7-8901-bcde-f23456789012.pdf",
-    "file_size": 512000,
-    "content_type": "application/pdf",
-    "uploaded_at": "2024-01-15T10:30:00.123456"
-  },
-  "user_id": "user123",
-  "ocr_result": {
-    "success": true,
-    "text": "INVOICE\nCompany: ABC Corp\nAmount: $150.50\nDate: 2024-01-15",
-    "method": "direct_extraction",
-    "confidence": 100.0,
-    "word_count": 8,
-    "char_count": 45,
-    "pages": 1
-  },
-  "parsed_fields": {
-    "contacto": "ABC Corp",
-    "numero_documento": "INV-001",
-    "fecha_emision": "15/01/2024",
-    "divisa": "USD",
-    "precio": 150.50,
-    "descuento": null,
-    "impuesto": 15.05,
-    "total": 165.55,
-    "confidence": "high"
-  }
-}
-```
-
-#### PDF response (OCR conversion):
-```json
-{
-  "success": true,
-  "file_info": {
-    "original_name": "scanned_invoice.pdf",
-    "saved_name": "c3d4e5f6-g7h8-9012-cdef-g34567890123.pdf",
-    "file_path": "uploads/c3d4e5f6-g7h8-9012-cdef-g34567890123.pdf",
-    "file_size": 1024000,
-    "content_type": "application/pdf",
-    "uploaded_at": "2024-01-15T10:30:00.123456"
-  },
-  "user_id": "user123",
-  "ocr_result": {
-    "success": true,
-    "text": "--- Page 1 ---\nINVOICE\nCompany: ABC Corp\nAmount: $150.50\nDate: 2024-01-15",
-    "method": "ocr_conversion",
-    "confidence": 82.3,
-    "word_count": 8,
-    "char_count": 45,
-    "pages": 1
-  },
-  "parsed_fields": {
-    "contacto": "ABC Corp",
-    "numero_documento": "INV-001",
-    "fecha_emision": "15/01/2024",
-    "divisa": "USD",
-    "precio": 150.50,
-    "descuento": null,
-    "impuesto": 15.05,
-    "total": 165.55,
-    "confidence": "high"
-  }
-}
-```
-
 ## Project structure
 
 ```
@@ -212,7 +140,6 @@ invoice-reader/
 The API is built with:
 - **FastAPI** - Modern and fast web framework
 - **Uvicorn** - ASGI server
-- **Pillow** - Image processing
 - **Pydantic** - Data validation
 - **Tesseract OCR** - Text extraction from images
 - **Mistral 7B Instruct** - AI-powered field extraction (via OpenRouter)
